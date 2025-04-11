@@ -48,7 +48,8 @@ app.post('/', async (req, res) => {
         (m) => m.namespace === 'weight' && m.key === 'wgt'
       )?.value || '—';
 
-      lines.push(`- ${item.title} | ${subheading} | ${weight}`);
+    const quantity = item.quantity;
+lines.push(`- ${item.title} ×${quantity} | ${subheading} | ${weight}`);
     } catch (err) {
       console.error(`⚠️ Ошибка загрузки метафилдов для товара ${productId}:`, err.response?.data || err.message);
       lines.push(`- ${item.title} | (метафилды недоступны)`);
