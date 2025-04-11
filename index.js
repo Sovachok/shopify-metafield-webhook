@@ -12,7 +12,7 @@ app.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Invalid order data' });
   }
 
-  let lines = ['Product info:'];
+  let lines = ['📦 Product Info:'];
 
   for (const item of order.line_items) {
     const productId = item.product_id;
@@ -43,7 +43,10 @@ app.post('/', async (req, res) => {
     }
   }
 
-  const noteText = lines.join('\n');
+  // Вставка комментария клиента, если он есть
+  const combinedNote = `${
+    order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
+  }${lines.join('\n')}`;
 
   try {
     await axios.put(
@@ -51,7 +54,7 @@ app.post('/', async (req, res) => {
       {
         order: {
           id: order.id,
-          note: noteText,
+          note: combinedNote,
         },
       },
       {
@@ -72,3 +75,4 @@ app.post('/', async (req, res) => {
 app.listen(3000, () => {
   console.log('Webhook server is running on port 3000');
 });
+
