@@ -11,6 +11,8 @@ if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_STORE_DOMAIN) {
   process.exit(1);
 }
 
+const clean = (str) => str.replace(/<[^>]*>/g, '').trim();
+
 app.post('/', async (req, res) => {
   const order = req.body.order;
   console.log('🟡 Получен новый webhook на заказ:', order?.id || '[без ID]');
@@ -24,6 +26,7 @@ app.post('/', async (req, res) => {
 
   for (const item of order.line_items) {
     const productId = item.product_id;
+    const quantity = item.quantity || 1;
     console.log(`🔍 Обработка товара: ${item.title} (ID: ${productId})`);
 
     try {
@@ -40,19 +43,21 @@ app.post('/', async (req, res) => {
       const metafields = metafieldsResp.data.metafields;
       console.log(`✅ Получены метафилды для продукта ${productId}:`, metafields);
 
-      const subheading = metafields.find(
+      const rawSubheading = metafields.find(
         (m) => m.namespace === 'subheading' && m.key === 'swd'
       )?.value || '—';
 
-      const weight = metafields.find(
+      const rawWeight = metafields.find(
         (m) => m.namespace === 'weight' && m.key === 'wgt'
       )?.value || '—';
 
-    const quantity = item.quantity;
-lines.push(`- ${item.title} ×${quantity} | ${subheading} | ${weight}`);
+      const subheading = clean(rawSubheading);
+      const weight = clean(rawWeight);
+
+      lines.push(`- ${item.title} ×${quantity} | ${subheading} | ${weight}`);
     } catch (err) {
       console.error(`⚠️ Ошибка загрузки метафилдов для товара ${productId}:`, err.response?.data || err.message);
-      lines.push(`- ${item.title} | (метафилды недоступны)`);
+      lines.push(`- ${item.title} ×${quantity} | (метафилды недоступны)`);
     }
   }
 
