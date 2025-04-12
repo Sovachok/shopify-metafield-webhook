@@ -6,28 +6,17 @@ app.use(express.json());
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
 
-if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_STORE_DOMAIN) {
-  console.error('❌ Переменные окружения не заданы. Завершаем работу...');
-  process.exit(1);
-}
-
-const clean = (str) => str.replace(/<[^>]*>/g, '').trim();
-
 app.post('/', async (req, res) => {
   const order = req.body.order;
-  console.log('🟡 Получен новый webhook на заказ:', order?.id || '[без ID]');
 
   if (!order || !order.line_items) {
-    console.error('❌ Невалидные данные заказа:', req.body);
     return res.status(400).json({ error: 'Invalid order data' });
   }
 
-  let lines = [];
+  let lines = ['📦 Product Info:'];
 
   for (const item of order.line_items) {
     const productId = item.product_id;
-    const quantity = item.quantity || 1;
-    console.log(`🔍 Обработка товара: ${item.title} (ID: ${productId})`);
 
     try {
       const metafieldsResp = await axios.get(
@@ -41,23 +30,18 @@ app.post('/', async (req, res) => {
       );
 
       const metafields = metafieldsResp.data.metafields;
-      console.log(`✅ Получены метафилды для продукта ${productId}:`, metafields);
-
-      const rawSubheading = metafields.find(
+      const subheading = metafields.find(
         (m) => m.namespace === 'subheading' && m.key === 'swd'
       )?.value || '—';
 
-      const rawWeight = metafields.find(
+      const weight = metafields.find(
         (m) => m.namespace === 'weight' && m.key === 'wgt'
       )?.value || '—';
 
-      const subheading = clean(rawSubheading);
-      const weight = clean(rawWeight);
-
-      lines.push(`×${quantity} | ${subheading} | ${weight}`);
+      const qty = String(item.quantity).padStart(2, '\u2007'); // U+2007 — фиксированный пробел (фигурный)
+      lines.push(`×${qty} | ${subheading} | ${weight}`);
     } catch (err) {
-      console.error(`⚠️ Ошибка загрузки метафилдов для товара ${productId}:`, err.response?.data || err.message);
-      lines.push(`×${quantity} | (метафилды недоступны)`);
+      lines.push(`×${item.quantity} | ${item.title} | (метафилды недоступны)`);
     }
   }
 
@@ -65,10 +49,8 @@ app.post('/', async (req, res) => {
     order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
   }${lines.join('\n')}`;
 
-  console.log(`📤 Обновление заметки заказа ${order.id}:\n${combinedNote}`);
-
   try {
-    const response = await axios.put(
+    await axios.put(
       `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/orders/${order.id}.json`,
       {
         order: {
@@ -84,14 +66,14 @@ app.post('/', async (req, res) => {
       }
     );
 
-    console.log(`✅ Заметка успешно обновлена для заказа ${order.id}`);
+    console.log('✅ Order note updated successfully.');
     res.status(200).json({ success: true });
   } catch (err) {
-    console.error('❌ Ошибка при обновлении заказа:', err.response?.data || err.message);
+    console.error('❌ Ошибка при обновлении заказа:', err.message);
     res.status(500).json({ error: 'Failed to update order note' });
   }
 });
 
 app.listen(3000, () => {
-  console.log('🚀 Webhook server is running on port 3000');
+  console.log('Webhook server is running on port 3000');
 });
