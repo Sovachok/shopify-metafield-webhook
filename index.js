@@ -7,7 +7,7 @@ const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
 
 if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_STORE_DOMAIN) {
-  console.error('❌ Переменные окружения не заданы. Завершаем работу....');
+  console.error('❌ Переменные окружения не заданы. Завершаем работу...');
   process.exit(1);
 }
 
@@ -22,27 +22,37 @@ app.post('/', async (req, res) => {
     return res.status(200).send('No items to process');
   }
 
-  let lines = [];
-  let langLine = '';
-  let customerNote = order.note ? `📝 Customer Note:\n${order.note}\n` : '';
+  let realOrdersCount = 0;
 
-  try {
-    const ordersResp = await axios.get(
-      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/customers/${order.customer.id}/orders.json`,
-      {
-        headers: {
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-        },
-      }
-    );
-    const orderCount = ordersResp.data.orders.length;
-    console.log(`🔁 Кол-во заказов у покупателя ${order.customer.id}: ${orderCount}`);
-    if (orderCount === 1) {
-      const lang = (order.customer_locale || '').toLowerCase();
-      langLine = lang.startsWith('he') ? '📄 Положить буклет на иврите\n' : '📄 Положить буклет на русском\n';
+  if (order.customer?.id) {
+    try {
+      const ordersResp = await axios.get(
+        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/orders.json?customer_id=${order.customer.id}&status=any`,
+        {
+          headers: {
+            'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      realOrdersCount = ordersResp.data.orders.length;
+      console.log(`🔁 Реальное кол-во заказов у покупателя ${order.customer.id}: ${realOrdersCount}`);
+    } catch (err) {
+      console.warn(`⚠️ Ошибка при получении заказов покупателя ${order.customer.id}:`, err.response?.data || err.message);
     }
-  } catch (err) {
-    console.log(`⚠️ Ошибка при получении заказов покупателя ${order.customer.id}:`, err.response?.data || err.message);
+  } else {
+    console.log('⚠️ У заказа отсутствует информация о клиенте');
+  }
+
+  let lines = [];
+
+  if (realOrdersCount === 1) {
+    const lang = order.customer_locale || '';
+    if (lang.startsWith('he')) {
+      lines.push('📄 פתק מידע בעברית');
+    } else {
+      lines.push('📄 Положить буклет на русском');
+    }
   }
 
   for (const item of order.line_items) {
@@ -82,7 +92,10 @@ app.post('/', async (req, res) => {
     }
   }
 
-  const combinedNote = `${customerNote}${langLine}${lines.join('\n')}`;
+  const combinedNote = `${
+    order.note ? '📝 Customer Note:\n' + order.note + '\n' : ''
+  }${lines.join('\n')}`;
+
   console.log(`📤 Обновление заметки заказа ${order.id}:\n${combinedNote}`);
 
   try {
