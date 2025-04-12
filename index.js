@@ -7,7 +7,7 @@ const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
 const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
 
 if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_STORE_DOMAIN) {
-  console.error('❌ Переменные окружения не заданы. Завершаем работу...');
+  console.error('❌ Переменные окружения не заданы. Завершаем работу....');
   process.exit(1);
 }
 
