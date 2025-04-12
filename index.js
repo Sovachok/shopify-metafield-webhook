@@ -22,7 +22,7 @@ app.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Invalid order data' });
   }
 
-  let lines = ['📦 Product Info:'];
+  let lines = [];
 
   for (const item of order.line_items) {
     const productId = item.product_id;
@@ -54,10 +54,10 @@ app.post('/', async (req, res) => {
       const subheading = clean(rawSubheading);
       const weight = clean(rawWeight);
 
-      lines.push(`- ${item.title} ×${quantity} | ${subheading} | ${weight}`);
+      lines.push(`×${quantity} | ${subheading} | ${weight}`);
     } catch (err) {
       console.error(`⚠️ Ошибка загрузки метафилдов для товара ${productId}:`, err.response?.data || err.message);
-      lines.push(`- ${item.title} ×${quantity} | (метафилды недоступны)`);
+      lines.push(`×${quantity} | (метафилды недоступны)`);
     }
   }
 
