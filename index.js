@@ -22,33 +22,27 @@ app.post('/', async (req, res) => {
     return res.status(200).send('No items to process');
   }
 
-  const customerId = order.customer?.id;
-  let isFirstOrder = false;
-  let customerLocale = order.customer_locale || 'ru';
-
-  if (customerId) {
-    try {
-      const customerResp = await axios.get(
-        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/customers/${customerId}/orders.json`,
-        {
-          headers: {
-            'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      const orders = customerResp.data.orders || [];
-      isFirstOrder = orders.length <= 1;
-      console.log(`🔁 Кол-во заказов у покупателя ${customerId}: ${orders.length}`);
-    } catch (err) {
-      console.warn(`⚠️ Ошибка при получении количества заказов:`, err.response?.data || err.message);
-    }
-  }
-
   let lines = [];
+  let langLine = '';
+  let customerNote = order.note ? `📝 Customer Note:\n${order.note}\n` : '';
 
-  if (isFirstOrder) {
-    lines.push(customerLocale === 'he' ? '📄 Положить буклет на иврите' : '📄 Положить буклет на русском');
+  try {
+    const ordersResp = await axios.get(
+      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/customers/${order.customer.id}/orders.json`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        },
+      }
+    );
+    const orderCount = ordersResp.data.orders.length;
+    console.log(`🔁 Кол-во заказов у покупателя ${order.customer.id}: ${orderCount}`);
+    if (orderCount === 1) {
+      const lang = (order.customer_locale || '').toLowerCase();
+      langLine = lang.startsWith('he') ? '📄 Положить буклет на иврите\n' : '📄 Положить буклет на русском\n';
+    }
+  } catch (err) {
+    console.log(`⚠️ Ошибка при получении заказов покупателя ${order.customer.id}:`, err.response?.data || err.message);
   }
 
   for (const item of order.line_items) {
@@ -88,14 +82,11 @@ app.post('/', async (req, res) => {
     }
   }
 
-  const combinedNote = `${
-    order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
-  }${lines.join('\n')}`;
-
+  const combinedNote = `${customerNote}${langLine}${lines.join('\n')}`;
   console.log(`📤 Обновление заметки заказа ${order.id}:\n${combinedNote}`);
 
   try {
-    const response = await axios.put(
+    await axios.put(
       `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/orders/${order.id}.json`,
       {
         order: {
