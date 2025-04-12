@@ -17,11 +17,12 @@ app.post('/', async (req, res) => {
   const order = req.body.order;
   console.log('🟡 Получен новый webhook на заказ:', order?.id || '[без ID]');
 
-  if (!order || !order.line_items) {
-    console.error('❌ Невалидные данные заказа:', req.body);
-    return res.status(400).json({ error: 'Invalid order data' });
-  }
+if (!order || !Array.isArray(order.line_items) || order.line_items.length === 0) {
+  console.log('⚠️ Пропущен заказ: нет товаров');
+  return res.status(200).send('No items to process');
+}
 
+  
   let lines = [];
 
   for (const item of order.line_items) {
