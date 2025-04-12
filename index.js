@@ -14,7 +14,10 @@ if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_STORE_DOMAIN) {
 const clean = (str) => str.replace(/<[^>]*>/g, '').trim();
 
 app.post('/', async (req, res) => {
-  const rawOrder = req.body.order || req.body;
+  console.log('🟠 ПОЛНЫЙ BODY ОТ SHOPIFY:\n', JSON.stringify(req.body, null, 2));
+
+  const order = req.body.order || req.body;
+
 
   console.log('🟡 Получен новый webhook на заказ:', rawOrder?.id || '[без ID]');
 
