@@ -94,7 +94,7 @@ app.post('/', async (req, res) => {
   }
 
   const combinedNote = `${
-    order.note ? '📝 Customer Note:\n' + order.note + '\n' : ''
+    order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
   }${lines.join('\n')}`;
 
   console.log(`📤 Обновление заметки заказа ${order.id}:\n${combinedNote}`);
