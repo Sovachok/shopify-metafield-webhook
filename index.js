@@ -14,17 +14,44 @@ if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_STORE_DOMAIN) {
 const clean = (str) => str.replace(/<[^>]*>/g, '').trim();
 
 app.post('/', async (req, res) => {
-  console.log('🟠 ПОЛНЫЙ BODY ОТ SHOPIFY:\n', JSON.stringify(req.body, null, 2));
-
-  const order = req.body;
+  const order = req.body.order || req.body;
   console.log('🟡 Получен новый webhook на заказ:', order?.id || '[без ID]');
 
-  if (!Array.isArray(order.line_items) || order.line_items.length === 0) {
+  if (!order || !Array.isArray(order.line_items) || order.line_items.length === 0) {
     console.log('⚠️ Пропущен заказ: нет товаров');
     return res.status(200).send('No items to process');
   }
 
   let lines = [];
+  let insertBooklet = '';
+  const lang = order.customer_locale;
+  const customerId = order.customer?.id;
+  let ordersCount = null;
+
+  if (customerId) {
+    try {
+      const customerResp = await axios.get(
+        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/customers/${customerId}.json`,
+        {
+          headers: {
+            'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      ordersCount = customerResp.data.customer.orders_count;
+    } catch (err) {
+      console.error('⚠️ Ошибка при получении количества заказов:', err.message);
+    }
+  }
+
+  if (ordersCount === 1) {
+    if (lang === 'ru') {
+      insertBooklet = 'Положить буклет на русском';
+    } else if (lang === 'he') {
+      insertBooklet = 'לשים חוברת בעברית';
+    }
+  }
 
   for (const item of order.line_items) {
     const productId = item.product_id;
@@ -64,6 +91,8 @@ app.post('/', async (req, res) => {
   }
 
   const combinedNote = `${
+    insertBooklet ? insertBooklet + '\n\n' : ''
+  }${
     order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
   }${lines.join('\n')}`;
 
