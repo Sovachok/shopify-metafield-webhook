@@ -23,34 +23,34 @@ app.post('/', async (req, res) => {
   }
 
   let lines = [];
-  let insertBooklet = '';
-  const lang = order.customer_locale;
-  const customerId = order.customer?.id;
+
+  // Получение количества заказов и языка
+  let customerLocale = order.customer_locale || 'he';
   let ordersCount = null;
 
-  if (customerId) {
-    try {
+  try {
+    const customerId = order.customer?.id;
+    if (customerId) {
       const customerResp = await axios.get(
         `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/customers/${customerId}.json`,
         {
           headers: {
             'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-            'Content-Type': 'application/json'
-          }
+            'Content-Type': 'application/json',
+          },
         }
       );
       ordersCount = customerResp.data.customer.orders_count;
-    } catch (err) {
-      console.error('⚠️ Ошибка при получении количества заказов:', err.message);
     }
+  } catch (err) {
+    console.error('⚠️ Ошибка при получении количества заказов:', err.response?.data || err.message);
   }
 
   if (ordersCount === 1) {
-    if (lang === 'ru') {
-      insertBooklet = 'Положить буклет на русском';
-    } else if (lang === 'he') {
-      insertBooklet = 'Положить буклет на иврите';
-    }
+    const insert = customerLocale === 'ru'
+      ? '📄 Вложить буклет: на русском'
+      : '📄 Вложить буклет: на иврите';
+    lines.push(insert);
   }
 
   for (const item of order.line_items) {
@@ -91,15 +91,13 @@ app.post('/', async (req, res) => {
   }
 
   const combinedNote = `${
-    insertBooklet ? insertBooklet + '\n\n' : ''
-  }${
     order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
   }${lines.join('\n')}`;
 
   console.log(`📤 Обновление заметки заказа ${order.id}:\n${combinedNote}`);
 
   try {
-    await axios.put(
+    const response = await axios.put(
       `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/orders/${order.id}.json`,
       {
         order: {
