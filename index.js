@@ -46,14 +46,15 @@ app.post('/', async (req, res) => {
 
   let lines = [];
 
-  if (realOrdersCount === 1) {
-    const lang = order.customer_locale || '';
-    if (lang.startsWith('he')) {
-      lines.push('📄 פתק מידע בעברית');
-    } else {
-      lines.push('📄 Положить буклет на русском');
-    }
+ if (realOrdersCount === 1) {
+  const lang = order.customer_locale || '';
+  if (lang.startsWith('he')) {
+    lines.push('📄 Положить буклет на иврите\n');
+  } else {
+    lines.push('📄 Положить буклет на русском\n');
   }
+}
+  
 
   for (const item of order.line_items) {
     const productId = item.product_id;
