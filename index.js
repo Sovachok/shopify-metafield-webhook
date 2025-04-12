@@ -22,17 +22,14 @@ app.post('/', async (req, res) => {
     return res.status(200).send('No items to process');
   }
 
-  let lines = [];
+  const customerId = order.customer?.id;
+  let isFirstOrder = false;
+  let customerLocale = order.customer_locale || 'ru';
 
-  // Получение количества заказов и языка
-  let customerLocale = order.customer_locale || 'he';
-  let ordersCount = null;
-
-  try {
-    const customerId = order.customer?.id;
-    if (customerId) {
+  if (customerId) {
+    try {
       const customerResp = await axios.get(
-        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/customers/${customerId}.json`,
+        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/customers/${customerId}/orders.json`,
         {
           headers: {
             'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
@@ -40,17 +37,18 @@ app.post('/', async (req, res) => {
           },
         }
       );
-      ordersCount = customerResp.data.customer.orders_count;
+      const orders = customerResp.data.orders || [];
+      isFirstOrder = orders.length <= 1;
+      console.log(`🔁 Кол-во заказов у покупателя ${customerId}: ${orders.length}`);
+    } catch (err) {
+      console.warn(`⚠️ Ошибка при получении количества заказов:`, err.response?.data || err.message);
     }
-  } catch (err) {
-    console.error('⚠️ Ошибка при получении количества заказов:', err.response?.data || err.message);
   }
 
-  if (ordersCount === 1) {
-    const insert = customerLocale === 'ru'
-      ? '📄 Вложить буклет: на русском'
-      : '📄 Вложить буклет: на иврите';
-    lines.push(insert);
+  let lines = [];
+
+  if (isFirstOrder) {
+    lines.push(customerLocale === 'he' ? '📄 Положить буклет на иврите' : '📄 Положить буклет на русском');
   }
 
   for (const item of order.line_items) {
