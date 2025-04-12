@@ -16,19 +16,17 @@ const clean = (str) => str.replace(/<[^>]*>/g, '').trim();
 app.post('/', async (req, res) => {
   console.log('🟠 ПОЛНЫЙ BODY ОТ SHOPIFY:\n', JSON.stringify(req.body, null, 2));
 
-  const order = req.body.order || req.body;
+  const order = req.body;
+  console.log('🟡 Получен новый webhook на заказ:', order?.id || '[без ID]');
 
-
-  console.log('🟡 Получен новый webhook на заказ:', rawOrder?.id || '[без ID]');
-
-  if (!rawOrder || !Array.isArray(rawOrder.line_items) || rawOrder.line_items.length === 0) {
+  if (!Array.isArray(order.line_items) || order.line_items.length === 0) {
     console.log('⚠️ Пропущен заказ: нет товаров');
     return res.status(200).send('No items to process');
   }
 
-  const lines = [];
+  let lines = [];
 
-  for (const item of rawOrder.line_items) {
+  for (const item of order.line_items) {
     const productId = item.product_id;
     const quantity = item.quantity || 1;
     console.log(`🔍 Обработка товара: ${item.title} (ID: ${productId})`);
@@ -66,17 +64,17 @@ app.post('/', async (req, res) => {
   }
 
   const combinedNote = `${
-    rawOrder.note ? '📝 Customer Note:\n' + rawOrder.note + '\n\n' : ''
+    order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
   }${lines.join('\n')}`;
 
-  console.log(`📤 Обновление заметки заказа ${rawOrder.id}:\n${combinedNote}`);
+  console.log(`📤 Обновление заметки заказа ${order.id}:\n${combinedNote}`);
 
   try {
     await axios.put(
-      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/orders/${rawOrder.id}.json`,
+      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/orders/${order.id}.json`,
       {
         order: {
-          id: rawOrder.id,
+          id: order.id,
           note: combinedNote,
         },
       },
@@ -88,7 +86,7 @@ app.post('/', async (req, res) => {
       }
     );
 
-    console.log(`✅ Заметка успешно обновлена для заказа ${rawOrder.id}`);
+    console.log(`✅ Заметка успешно обновлена для заказа ${order.id}`);
     res.status(200).json({ success: true });
   } catch (err) {
     console.error('❌ Ошибка при обновлении заказа:', err.response?.data || err.message);
