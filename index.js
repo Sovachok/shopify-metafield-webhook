@@ -49,7 +49,7 @@ app.post('/', async (req, res) => {
     if (lang === 'ru') {
       insertBooklet = 'Положить буклет на русском';
     } else if (lang === 'he') {
-      insertBooklet = 'לשים חוברת בעברית';
+      insertBooklet = 'Положить буклет на иврите';
     }
   }
 
