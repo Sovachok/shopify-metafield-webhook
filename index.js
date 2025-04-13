@@ -97,15 +97,22 @@ app.post('/', async (req, res) => {
 
 
 // --- БЛОК: ВЫБОР ПРОБНИКА ---
+// ВСТАВИТЬ ВМЕСТО lines.push(`×${quantity} | ${subheading} | ${weight}`); ПОСЛЕ ЦИКЛА ПО ТОВАРАМ
+
+// --- БЛОК: ВЫБОР ПРОБНИКА ---
 try {
   const allPastProductIds = new Set();
+  const allPastProductTitles = new Set();
   const collectionStats = {};
 
-  // Собираем ID всех товаров из прошлых заказов
+  // Собираем ID и названия всех товаров из прошлых заказов
   for (const pastOrder of ordersResp.data.orders) {
     for (const line of pastOrder.line_items || []) {
       if (line.product_id) {
         allPastProductIds.add(line.product_id);
+      }
+      if (line.title) {
+        allPastProductTitles.add(line.title.toLowerCase().replace(/\|.*$/, '').trim());
       }
     }
   }
@@ -161,7 +168,7 @@ try {
 
     const sortedCandidates = [...new Set(productIdsInCollection)].sort((a, b) => (productStats[b] || 0) - (productStats[a] || 0));
 
-    for (const candidateId of sortedCandidates.slice(0, 10)) {
+    for (const candidateId of sortedCandidates.slice(0, 30)) {
       if (allPastProductIds.has(candidateId)) continue;
 
       const metaResp = await axios.get(
@@ -175,11 +182,14 @@ try {
       );
 
       const metas = metaResp.data.metafields;
-      const sub = clean(metas.find(m => m.namespace === 'subheading' && m.key === 'swd')?.value || '—');
+      const subRaw = metas.find(m => m.namespace === 'subheading' && m.key === 'swd')?.value || '';
+      const subCleaned = clean(subRaw);
+      const subKey = subCleaned.toLowerCase().replace(/\|.*$/, '').trim();
+
       const hasMatcha = metas.some(m => m.value?.toLowerCase?.().includes('matcha'));
 
-      if (!hasMatcha) {
-        lines.push(`🎁 Пробник: ${sub}`);
+      if (!hasMatcha && !allPastProductTitles.has(subKey)) {
+        lines.push(`🎁 Пробник: ${subCleaned}`);
         break;
       }
     }
