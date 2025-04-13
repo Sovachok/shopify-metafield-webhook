@@ -107,12 +107,8 @@ app.post('/', async (req, res) => {
 
     for (const pastOrder of ordersResp.data.orders) {
       for (const line of pastOrder.line_items || []) {
-        if (line.product_id) {
-          allPastProductIds.add(line.product_id);
-        }
-        if (line.title) {
-          allPastProductTitles.add(line.title.toLowerCase().replace(/\|.*$/, '').trim());
-        }
+        if (line.product_id) allPastProductIds.add(line.product_id);
+        if (line.title) allPastProductTitles.add(line.title.toLowerCase().replace(/\|.*$/, '').trim());
       }
     }
 
@@ -121,19 +117,23 @@ app.post('/', async (req, res) => {
     const collectionCounts = {};
     for (const item of order.line_items) {
       const productId = item.product_id;
-      const productResp = await axios.get(
-        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${productId}/collections.json`,
-        {
-          headers: {
-            'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      try {
+        const productResp = await axios.get(
+          `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${productId}/collections.json`,
+          {
+            headers: {
+              'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
 
-      for (const collection of productResp.data.collections) {
-        const id = collection.id;
-        collectionCounts[id] = (collectionCounts[id] || 0) + item.quantity;
+        for (const collection of productResp.data.collections || []) {
+          const id = collection.id;
+          collectionCounts[id] = (collectionCounts[id] || 0) + item.quantity;
+        }
+      } catch (err) {
+        console.warn(`⚠️ Ошибка при получении коллекций товара ${productId}:`, err.response?.data || err.message);
       }
     }
 
