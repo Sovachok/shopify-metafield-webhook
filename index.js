@@ -55,7 +55,7 @@ app.post('/', async (req, res) => {
       langFromCustomer.includes('עברית') ||
       langFromOrder.startsWith('he');
 
-    lines.push(isHebrew ? '📄 פתק מידע בעברית' : '📄 Положить буклет на русском');
+    lines.push(isHebrew ? '📄 Положить буклет на иврите' : '📄 Положить буклет на русском');
   }
 
   for (const item of order.line_items) {
