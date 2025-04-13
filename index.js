@@ -115,6 +115,8 @@ app.post('/', async (req, res) => {
     console.log('📦 Все ранее заказанные товары:\n' + [...allPastProductTitles].join(', '));
 
     const collectionCounts = {};
+    const collectionNames = {};
+
     for (const item of order.line_items) {
       const productId = item.product_id;
       try {
@@ -131,13 +133,17 @@ app.post('/', async (req, res) => {
         for (const collection of productResp.data.collections || []) {
           const id = collection.id;
           collectionCounts[id] = (collectionCounts[id] || 0) + item.quantity;
+          collectionNames[id] = collection.title;
         }
       } catch (err) {
         console.warn(`⚠️ Ошибка при получении коллекций товара ${productId}:`, err.response?.data || err.message);
       }
     }
 
-    const favoriteCollectionId = Object.entries(collectionCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const sortedCollections = Object.entries(collectionCounts).sort((a, b) => b[1] - a[1]);
+    console.log('📊 Любимые коллекции покупателя:', sortedCollections.map(([id, count]) => `${collectionNames[id] || 'ID ' + id}: ${count}`).join(', '));
+
+    const favoriteCollectionId = sortedCollections[0]?.[0];
 
     if (favoriteCollectionId) {
       const collectResp = await axios.get(
