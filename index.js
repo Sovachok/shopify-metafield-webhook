@@ -96,40 +96,27 @@ app.post('/', async (req, res) => {
   }
 
 
-// блок сбора информации для выбора пробника
-// 🔍 Дополнительная логика: выбор пробника
-const orderedProductIds = new Set(order.line_items.map(item => item.product_id));
-
-let candidateProduct = null;
-
+// --- БЛОК: ВЫБОР ПРОБНИКА ---
 try {
-  // 1. Получаем ВСЕ заказы клиента
-  const allOrdersResp = await axios.get(
-    `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/orders.json?customer_id=${order.customer.id}&status=any&fields=line_items`,
-    {
-      headers: {
-        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-        'Content-Type': 'application/json',
-      },
+  const allPastProductIds = new Set();
+  const collectionStats = {};
+
+  // Собираем ID всех товаров из прошлых заказов
+  for (const pastOrder of ordersResp.data.orders) {
+    for (const line of pastOrder.line_items || []) {
+      if (line.product_id) {
+        allPastProductIds.add(line.product_id);
+      }
     }
-  );
-
-  const allLineItems = allOrdersResp.data.orders.flatMap(o => o.line_items);
-  const countMap = {};
-
-  for (const item of allLineItems) {
-    const id = item.product_id;
-    if (!countMap[id]) countMap[id] = 0;
-    countMap[id] += item.quantity || 1;
   }
 
-  const topProducts = Object.entries(countMap)
-    .sort((a, b) => b[1] - a[1])
-    .map(([id]) => parseInt(id));
+  // Получаем коллекции всех товаров текущего заказа
+  const collectionCounts = {};
+  for (const item of order.line_items) {
+    const productId = item.product_id;
 
-  for (const topId of topProducts) {
     const productResp = await axios.get(
-      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${topId}.json`,
+      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${productId}/collections.json`,
       {
         headers: {
           'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
@@ -138,9 +125,19 @@ try {
       }
     );
 
-    const product = productResp.data.product;
-    const collectionsResp = await axios.get(
-      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/collects.json?product_id=${topId}`,
+    for (const collection of productResp.data.collections) {
+      const id = collection.id;
+      collectionCounts[id] = (collectionCounts[id] || 0) + item.quantity;
+    }
+  }
+
+  // Находим любимую коллекцию по количеству заказанных товаров
+  const favoriteCollectionId = Object.entries(collectionCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  if (favoriteCollectionId) {
+    // Получаем товары из любимой коллекции
+    const collectResp = await axios.get(
+      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/collects.json?collection_id=${favoriteCollectionId}&limit=250`,
       {
         headers: {
           'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
@@ -149,11 +146,26 @@ try {
       }
     );
 
-    const collectionIds = collectionsResp.data.collects.map(c => c.collection_id);
+    const productIdsInCollection = collectResp.data.collects.map(c => c.product_id);
 
-    for (const collectionId of collectionIds) {
-      const productsResp = await axios.get(
-        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/collects.json?collection_id=${collectionId}`,
+    // Сортируем по количеству покупок каждого товара из коллекции
+    const productStats = {};
+    for (const pastOrder of ordersResp.data.orders) {
+      for (const line of pastOrder.line_items || []) {
+        const pid = line.product_id;
+        if (productIdsInCollection.includes(pid)) {
+          productStats[pid] = (productStats[pid] || 0) + line.quantity;
+        }
+      }
+    }
+
+    const sortedCandidates = [...new Set(productIdsInCollection)].sort((a, b) => (productStats[b] || 0) - (productStats[a] || 0));
+
+    for (const candidateId of sortedCandidates.slice(0, 10)) {
+      if (allPastProductIds.has(candidateId)) continue;
+
+      const metaResp = await axios.get(
+        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${candidateId}/metafields.json`,
         {
           headers: {
             'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
@@ -162,37 +174,20 @@ try {
         }
       );
 
-      const productIdsInCollection = productsResp.data.collects.map(p => p.product_id);
-      const filtered = productIdsInCollection.filter(pid => !orderedProductIds.has(pid));
+      const metas = metaResp.data.metafields;
+      const sub = clean(metas.find(m => m.namespace === 'subheading' && m.key === 'swd')?.value || '—');
+      const hasMatcha = metas.some(m => m.value?.toLowerCase?.().includes('matcha'));
 
-      if (filtered.length > 0) {
-        const randomId = filtered[Math.floor(Math.random() * filtered.length)];
-
-        const productInfo = await axios.get(
-          `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${randomId}.json`,
-          {
-            headers: {
-              'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-
-        const title = productInfo.data.product.title;
-        candidateProduct = title;
+      if (!hasMatcha) {
+        lines.push(`🎁 Пробник: ${sub}`);
         break;
       }
     }
-
-    if (candidateProduct) break;
   }
-} catch (e) {
-  console.warn('⚠️ Ошибка подбора пробника:', e.message);
+} catch (err) {
+  console.warn('⚠️ Ошибка при подборе пробника:', err.message);
 }
 
-if (candidateProduct) {
-  lines.push(`🎁 Пробник: ${candidateProduct}`);
-}
 
   // создание заметки
   
