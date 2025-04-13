@@ -46,15 +46,17 @@ app.post('/', async (req, res) => {
 
   let lines = [];
 
- if (realOrdersCount === 1) {
-  const lang = order.customer_locale || '';
-  if (lang.startsWith('he')) {
-    lines.push('📄 Положить буклет на иврите\n');
-  } else {
-    lines.push('📄 Положить буклет на русском\n');
+  // Добавляем буклет, если это первый заказ
+  if (realOrdersCount === 1) {
+    const langFromCustomer = (order.customer?.note || '').toLowerCase();
+    const langFromOrder = (order.customer_locale || '').toLowerCase();
+    const isHebrew =
+      langFromCustomer.includes('hebrew') ||
+      langFromCustomer.includes('עברית') ||
+      langFromOrder.startsWith('he');
+
+    lines.push(isHebrew ? '📄 פתק מידע בעברית' : '📄 Положить буклет на русском');
   }
-}
-  
 
   for (const item of order.line_items) {
     const productId = item.product_id;
@@ -95,7 +97,7 @@ app.post('/', async (req, res) => {
 
   const combinedNote = `${
     order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
-  }${lines.join('\n')}`;
+  }${lines.join('\n\n')}`;
 
   console.log(`📤 Обновление заметки заказа ${order.id}:\n${combinedNote}`);
 
