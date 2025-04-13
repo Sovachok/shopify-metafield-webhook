@@ -95,6 +95,107 @@ app.post('/', async (req, res) => {
     }
   }
 
+
+// блок сбора информации для выбора пробника
+// 🔍 Дополнительная логика: выбор пробника
+const orderedProductIds = new Set(order.line_items.map(item => item.product_id));
+
+let candidateProduct = null;
+
+try {
+  // 1. Получаем ВСЕ заказы клиента
+  const allOrdersResp = await axios.get(
+    `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/orders.json?customer_id=${order.customer.id}&status=any&fields=line_items`,
+    {
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  const allLineItems = allOrdersResp.data.orders.flatMap(o => o.line_items);
+  const countMap = {};
+
+  for (const item of allLineItems) {
+    const id = item.product_id;
+    if (!countMap[id]) countMap[id] = 0;
+    countMap[id] += item.quantity || 1;
+  }
+
+  const topProducts = Object.entries(countMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => parseInt(id));
+
+  for (const topId of topProducts) {
+    const productResp = await axios.get(
+      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${topId}.json`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const product = productResp.data.product;
+    const collectionsResp = await axios.get(
+      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/collects.json?product_id=${topId}`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const collectionIds = collectionsResp.data.collects.map(c => c.collection_id);
+
+    for (const collectionId of collectionIds) {
+      const productsResp = await axios.get(
+        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/collects.json?collection_id=${collectionId}`,
+        {
+          headers: {
+            'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const productIdsInCollection = productsResp.data.collects.map(p => p.product_id);
+      const filtered = productIdsInCollection.filter(pid => !orderedProductIds.has(pid));
+
+      if (filtered.length > 0) {
+        const randomId = filtered[Math.floor(Math.random() * filtered.length)];
+
+        const productInfo = await axios.get(
+          `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${randomId}.json`,
+          {
+            headers: {
+              'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        const title = productInfo.data.product.title;
+        candidateProduct = title;
+        break;
+      }
+    }
+
+    if (candidateProduct) break;
+  }
+} catch (e) {
+  console.warn('⚠️ Ошибка подбора пробника:', e.message);
+}
+
+if (candidateProduct) {
+  lines.push(`🎁 Пробник: ${candidateProduct}`);
+}
+
+  // создание заметки
+  
   const combinedNote = `${
     order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
   }${lines.join('\n\n')}`;
