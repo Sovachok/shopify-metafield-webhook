@@ -1,3 +1,4 @@
+// ========== Зависимости и настройка ========== 
 const express = require('express');
 const axios = require('axios');
 const app = express();
@@ -13,6 +14,7 @@ if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_STORE_DOMAIN) {
 
 const clean = (str) => str.replace(/<[^>]*>/g, '').trim();
 
+// ========== Обработка Webhook заказа ========== 
 app.post('/', async (req, res) => {
   const order = req.body.order || req.body;
   console.log('🟡 Получен новый webhook на заказ:', order?.id || '[без ID]');
@@ -22,11 +24,13 @@ app.post('/', async (req, res) => {
     return res.status(200).send('No items to process');
   }
 
+  // ========== Получение всех заказов покупателя ========== 
   let realOrdersCount = 0;
+  let ordersResp = null;
 
   if (order.customer?.id) {
     try {
-      const ordersResp = await axios.get(
+      ordersResp = await axios.get(
         `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/orders.json?customer_id=${order.customer.id}&status=any`,
         {
           headers: {
@@ -46,7 +50,7 @@ app.post('/', async (req, res) => {
 
   let lines = [];
 
-  // Добавляем буклет, если это первый заказ
+  // ========== Добавление буклета при первом заказе ========== 
   if (realOrdersCount === 1) {
     const langFromCustomer = (order.customer?.note || '').toLowerCase();
     const langFromOrder = (order.customer_locale || '').toLowerCase();
@@ -58,6 +62,7 @@ app.post('/', async (req, res) => {
     lines.push(isHebrew ? '📄 Положить буклет на иврите' : '📄 Положить буклет на русском');
   }
 
+  // ========== Обработка товаров текущего заказа ========== 
   for (const item of order.line_items) {
     const productId = item.product_id;
     const quantity = item.quantity || 1;
@@ -95,86 +100,29 @@ app.post('/', async (req, res) => {
     }
   }
 
+  // ========== Алгоритм подбора пробника ========== 
+  try {
+    const allPastProductIds = new Set();
+    const allPastProductTitles = new Set();
 
-// ВСТАВИТЬ ВМЕСТО lines.push(`×${quantity} | ${subheading} | ${weight}`); ПОСЛЕ ЦИКЛА ПО ТОВАРАМ
-
-// --- БЛОК: ВЫБОР ПРОБНИКА ---
-try {
-  const allPastProductIds = new Set();
-  const allPastProductTitles = new Set();
-  const collectionStats = {};
-
-  // Собираем ID и названия всех товаров из прошлых заказов
-  for (const pastOrder of ordersResp.data.orders) {
-    for (const line of pastOrder.line_items || []) {
-      if (line.product_id) {
-        allPastProductIds.add(line.product_id);
-      }
-      if (line.title) {
-        allPastProductTitles.add(line.title.toLowerCase().replace(/\|.*$/, '').trim());
-      }
-    }
-  }
-
-  console.log('📦 Все ранее заказанные товары:\n' + [...allPastProductTitles].join(', '));
-
-
-  // Получаем коллекции всех товаров текущего заказа
-  const collectionCounts = {};
-  for (const item of order.line_items) {
-    const productId = item.product_id;
-
-    const productResp = await axios.get(
-      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${productId}/collections.json`,
-      {
-        headers: {
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    for (const collection of productResp.data.collections) {
-      const id = collection.id;
-      collectionCounts[id] = (collectionCounts[id] || 0) + item.quantity;
-    }
-  }
-
-  // Находим любимую коллекцию по количеству заказанных товаров
-  const favoriteCollectionId = Object.entries(collectionCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-
-  if (favoriteCollectionId) {
-    // Получаем товары из любимой коллекции
-    const collectResp = await axios.get(
-      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/collects.json?collection_id=${favoriteCollectionId}&limit=250`,
-      {
-        headers: {
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const productIdsInCollection = collectResp.data.collects.map(c => c.product_id);
-
-    // Сортируем по количеству покупок каждого товара из коллекции
-    const productStats = {};
     for (const pastOrder of ordersResp.data.orders) {
       for (const line of pastOrder.line_items || []) {
-        const pid = line.product_id;
-        if (productIdsInCollection.includes(pid)) {
-          productStats[pid] = (productStats[pid] || 0) + line.quantity;
+        if (line.product_id) {
+          allPastProductIds.add(line.product_id);
+        }
+        if (line.title) {
+          allPastProductTitles.add(line.title.toLowerCase().replace(/\|.*$/, '').trim());
         }
       }
     }
 
-    const sortedCandidates = [...new Set(productIdsInCollection)].sort((a, b) => (productStats[b] || 0) - (productStats[a] || 0));
+    console.log('📦 Все ранее заказанные товары:\n' + [...allPastProductTitles].join(', '));
 
-    for (const candidateId of sortedCandidates.slice(0, 30)) {
-      if (allPastProductIds.has(candidateId)) continue;
-
-      const metaResp = await axios.get(
-        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${candidateId}/metafields.json`,
+    const collectionCounts = {};
+    for (const item of order.line_items) {
+      const productId = item.product_id;
+      const productResp = await axios.get(
+        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${productId}/collections.json`,
         {
           headers: {
             'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
@@ -183,26 +131,69 @@ try {
         }
       );
 
-      const metas = metaResp.data.metafields;
-      const subRaw = metas.find(m => m.namespace === 'subheading' && m.key === 'swd')?.value || '';
-      const subCleaned = clean(subRaw);
-      const subKey = subCleaned.toLowerCase().replace(/\|.*$/, '').trim();
-
-      const hasMatcha = metas.some(m => m.value?.toLowerCase?.().includes('matcha'));
-
-      if (!hasMatcha && !allPastProductTitles.has(subKey)) {
-        lines.push(`🎁 Пробник: ${subCleaned}`);
-        break;
+      for (const collection of productResp.data.collections) {
+        const id = collection.id;
+        collectionCounts[id] = (collectionCounts[id] || 0) + item.quantity;
       }
     }
+
+    const favoriteCollectionId = Object.entries(collectionCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    if (favoriteCollectionId) {
+      const collectResp = await axios.get(
+        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/collects.json?collection_id=${favoriteCollectionId}&limit=250`,
+        {
+          headers: {
+            'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const productIdsInCollection = collectResp.data.collects.map(c => c.product_id);
+      const productStats = {};
+      for (const pastOrder of ordersResp.data.orders) {
+        for (const line of pastOrder.line_items || []) {
+          const pid = line.product_id;
+          if (productIdsInCollection.includes(pid)) {
+            productStats[pid] = (productStats[pid] || 0) + line.quantity;
+          }
+        }
+      }
+
+      const sortedCandidates = [...new Set(productIdsInCollection)].sort((a, b) => (productStats[b] || 0) - (productStats[a] || 0));
+
+      for (const candidateId of sortedCandidates.slice(0, 30)) {
+        if (allPastProductIds.has(candidateId)) continue;
+
+        const metaResp = await axios.get(
+          `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2023-10/products/${candidateId}/metafields.json`,
+          {
+            headers: {
+              'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        const metas = metaResp.data.metafields;
+        const subRaw = metas.find(m => m.namespace === 'subheading' && m.key === 'swd')?.value || '';
+        const subCleaned = clean(subRaw);
+        const subKey = subCleaned.toLowerCase().replace(/\|.*$/, '').trim();
+
+        const hasMatcha = metas.some(m => m.value?.toLowerCase?.().includes('matcha'));
+
+        if (!hasMatcha && !allPastProductTitles.has(subKey)) {
+          lines.push(`🎁 Пробник: ${subCleaned}`);
+          break;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ Ошибка при подборе пробника:', err.message);
   }
-} catch (err) {
-  console.warn('⚠️ Ошибка при подборе пробника:', err.message);
-}
 
-
-  // создание заметки
-  
+  // ========== Объединение и запись заметки в заказ ========== 
   const combinedNote = `${
     order.note ? '📝 Customer Note:\n' + order.note + '\n\n' : ''
   }${lines.join('\n\n')}`;
@@ -234,6 +225,7 @@ try {
   }
 });
 
+// ========== Запуск сервера ========== 
 app.listen(3000, () => {
   console.log('🚀 Webhook server is running on port 3000');
 });
